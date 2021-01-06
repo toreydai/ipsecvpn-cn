@@ -9,20 +9,20 @@
 欢迎联系参与方案共建和提交方案需求, 也欢迎在 github 项目issue中留言反馈bugs。
 
 ## 项目说明
-1. 适用于AWS中国区域与您的本地私有网络通过IpsecVPN互通场景。此场景要求您的本地办公网络具有支持ipsecvpn功能的路由器或网关。
+1. 适用于AWS中国区域与您的本地私有网络通过IPSecVPN互通场景。此场景要求您的本地办公网络具有支持IPSecVPN功能的路由器或网关。
 
 
 ![Architedcture](images/aws_to_on_perm.png)
 
 
-2. 适用于您在aws中国区域内有多个VPC，两个vpc之间需要互相访问的场景。
+2. 适用于您在AWS中国区域内有多个VPC，两个VPC之间需要互相访问的场景。
 
 ![Architedcture](images/in_aws.png)
 
 <br>
 
 ## 准备工作
-需要提前准备好实例的EIP和私有IP。其中，私有IP将在模板中作为参数填入， EIP将在实例创建后进行绑定。
+需要提前准备好EC2实例使用的的EIP，EC2实例创建后，将EIP与EC2实例进行绑定。
 
 ## 操作步骤
  1. 在AWS CloudFormation控制台中启动模板
