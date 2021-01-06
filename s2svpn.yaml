@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  InstanceType:
+    Description: IpsecVPN EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - c4.large
+      - c5.large     
+    ConstraintDescription: must be a valid EC2 instance type.
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: VpcId of your existing Virtual Private Cloud (VPC)
+    ConstraintDescription: must be the VPC Id of an existing Virtual Private Cloud.
+  SubnetId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: SubnetId of an existing public subnet in your Virtual Private Cloud (VPC)
+    ConstraintDescription: must be an existing public subnet in the selected Virtual Private Cloud.
+  PSK:
+    Type: String
+    Description: Pre Shared Key
+  LeftIp:
+    Type: String
+    Description: Left static public ip address 
+  LeftSubnet:
+    Type: String
+    Description: Left EC2 Subnet used for IPSecVPN
+  RightIp:
+    Type: String
+    Description: Peering public ip address
+  RightSubnet:
+    Type: String
+    Description: Peering Subnet used for IPSecVPN
+
+Mappings:
+  AWSInstanceType2Arch:
+    t2.micro:
+      Arch: HVM64
+    c4.large:
+      Arch: HVM64
+    c5.large:
+      Arch: HVM64
+  AWSRegionMap:
+    cn-north-1: # Beijing (China)
+      HVM64: ami-071e0769a839a3f0d # latest amzn2 ami
+      # HVM64: ami-03ae67ee227d997be
+      AWSARN: aws-cn
+    cn-northwest-1: # Ningxia (China)
+      HVM64: ami-0934e7d625575bb7c # latest amzn2 ami
+      # HVM64: ami-00d2f9d34d345da04
+      AWSARN: aws-cn
+
+Resources:
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Enable tcp udp access
+      SecurityGroupIngress:
+        - IpProtocol: '-1'
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: !Ref RightSubnet
+        - IpProtocol: '50'
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: '4500'
+          ToPort: '4500'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: '500'
+          ToPort: '500'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+  EC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap
+        - AWSRegionMap
+        - !Ref 'AWS::Region'
+        - !FindInMap
+          - AWSInstanceType2Arch
+          - !Ref InstanceType
+          - Arch
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SourceDestCheck: 'false'
+      Tags:
+        - Key: Name
+          Value: IpsecInstance
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: "SecurityGroup"
+          SubnetId:
+            Ref: "SubnetId"
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash -xe
+            yum -y install openswan
+
+            echo "${LeftIp}  ${RightIp} : PSK \"${PSK}\"
+            " > /etc/ipsec.secrets
+
+            echo "config setup
+                plutostderrlog=/tmp/pluto.log
+
+            conn lan-to-lan
+                auto=start #automatically start if detected
+                type=tunnel #tunnel mode/not transport
+
+                ###THIS SIDE###
+                left=%defaultroute
+                leftid=${LeftIp}
+                leftsubnet=${LeftSubnet}
+                leftnexthop=%defaultroute
+
+                ###PEER SIDE###
+                right=${RightIp}
+                rightsubnet=${RightSubnet}
+
+                #phase 1 encryption-integrity-DiffieHellman
+                keyexchange=ike
+                ikev2=yes
+                ike=aes128-sha1;modp1024
+                ikelifetime=86400s
+                authby=secret #use presharedkey
+                rekey=yes  #should we rekey when key lifetime is about to expire
+
+                #phase 2 encryption-pfsgroup
+                phase2=esp #esp for encryption | ah for authentication only
+                #phase2alg=aes192-sha1;modp1024
+                phase2alg=aes256-sha1
+                #phase2alg=aes128-sha1;modp1024
+                pfs=no
+
+                #forceencaps=yes
+                dpddelay=10
+                dpdtimeout=60
+                dpdaction=restart_by_peer
+                salifetime=86400s
+            " > /etc/ipsec.conf
+
+            cat > /etc/sysctl.conf <<EOF
+            net.ipv4.ip_forward = 1
+            net.ipv4.conf.all.accept_redirects = 0
+            net.ipv4.conf.all.send_redirects = 0
+            net.ipv4.conf.default.send_redirects = 0
+            net.ipv4.conf.eth0.send_redirects = 0
+            net.ipv4.conf.default.accept_redirects = 0
+            net.ipv4.conf.eth0.accept_redirects = 0
+            EOF
+
+            systemctl enable ipsec
+            systemctl start ipsec 
+
+            iptables -t mangle -A FORWARD -o eth0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1387
+          -
+            PSK: !Ref PSK
+            LeftIp: !Ref LeftIp
+            RightIp: !Ref RightIp
+            LeftSubnet:  !Ref LeftSubnet
+            RightSubnet: !Ref RightSubnet
