@@ -53,6 +53,17 @@ VpcId  | EC2所属VPC  | 下拉选择
 
  4. 对端路由器配置人员完成后，进行连通性验证。
 
+## 验证连通性
+
+在EC2实例上执行"ipsec verify"
+![Architedcture](images/ipsec_verify.png)
+
+在EC2实例上执行"ipsec auto --status | grep ==="
+![Architedcture](images/ipsec_status.png)
+
+在EC2实例上执行"tail -f /tmp/pluto.log -n10"
+![Architedcture](images/ipsec_logs.png)
+
 
 ## FAQ
 
