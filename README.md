@@ -25,6 +25,7 @@
 需要提前准备好实例的EIP和私有IP。其中，私有IP将在模板中作为参数填入， EIP将在实例创建后进行绑定。
 
  1. 在AWS CloudFormation控制台中启动模板
+ ![Architedcture](images/cloudformation.png)
 
 参数说明
 
